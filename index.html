@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seazone — Marketing Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sea: {
+              50: '#f0fdf9',
+              100: '#ccfbef',
+              200: '#99f6df',
+              300: '#5ceacc',
+              400: '#2dd4b4',
+              500: '#14b89c',
+              600: '#0d9480',
+              700: '#0f7668',
+              800: '#115e54',
+              900: '#134e46',
+              950: '#042f2b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .tab-active { border-bottom: 2px solid #0d9480; color: #0d9480; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useCallback } = React;
+
+    // ============================================================
+    // DATA LAYER — Mock data (replace with API calls)
+    // ============================================================
+
+    // TODO: Instagram Graph API — GET /{user-id}?fields=followers_count
+    // TODO: TikTok API — GET /user/info
+    const FOLLOWERS_DATA = {
+      '@destinoseazone_ig': {
+        label: '@destinoseazone',
+        platform: 'Instagram',
+        current: 108500,
+        goals: { abr: 110000, mai: 120000, jun: 130000, jul: 140000, ago: 150000, set: 160000, out: 170000, nov: 180000, dez: 190000 },
+      },
+      '@vistasdeanita_ig': {
+        label: '@vistasdeanita',
+        platform: 'Instagram',
+        current: 167200,
+        goals: { abr: 170000, mai: 180000, jun: 190000, jul: 200000, ago: 210000, set: 220000, out: 230000, nov: 240000, dez: 250000 },
+      },
+      '@vistasdeanita_tt': {
+        label: '@vistasdeanita',
+        platform: 'TikTok',
+        current: 4800,
+        goals: { abr: 5000, mai: 6000, jun: 7000, jul: 8000, ago: 9000, set: 10000, out: 11000, nov: 12000, dez: 13000 },
+      },
+      '@destinoseazone_tt': {
+        label: '@destinoseazone',
+        platform: 'TikTok',
+        current: 920,
+        goals: { abr: 1000, mai: 2000, jun: 3000, jul: 4000, ago: 5000, set: 6000, out: 7000, nov: 8000, dez: 9000 },
+      },
+    };
+
+    const CURRENT_MONTH = 'abr'; // TODO: derive from Date()
+
+    // TODO: Pipefy GraphQL API — query { cards(pipe_id: "...") { ... } }
+    const CRIACAO_DATA = {
+      entregasNoPrazo: { total: { real: null, meta: null }, byType: {
+        estatico: { real: null, meta: null },
+        videoMotion: { real: null, meta: null },
+        blogLanding: { real: null, meta: null },
+        branding: { real: null, meta: null },
+      }},
+      taxaRetrabalho: { real: null, meta: null },
+      throughputSemanal: { real: null, meta: null },
+      backlogAberto: { real: null, meta: null },
+      cicloMedio: { byType: {
+        estatico: { real: null, meta: null, unit: 'dias' },
+        videoMotion: { real: null, meta: null, unit: 'dias' },
+        blogLanding: { real: null, meta: null, unit: 'dias' },
+        branding: { real: null, meta: null, unit: 'dias' },
+      }},
+    };
+
+    // TODO: Google Sheets API — planilha editorial
+    const EDITORIAL_CALENDAR = [
+      { day: 'Segunda', editoria: 'Inteligência de Mercado', format: 'Carrossel educativo', channels: ['Instagram'] },
+      { day: 'Terça', editoria: 'Achados Seazone', format: 'Oportunidade do portfólio', channels: ['Instagram', 'TikTok'] },
+      { day: 'Quarta', editoria: 'Dono no Controle', format: 'Reels ou carrossel', channels: ['Instagram'] },
+      { day: 'Quinta', editoria: 'Resultados Reais', format: 'Prova social/depoimento', channels: ['Instagram'] },
+      { day: 'Sexta', editoria: 'Onde Investir', format: 'Carrossel ou Reels', channels: ['Instagram'] },
+      { day: 'Sábado', editoria: 'Por dentro do Airbnb', format: 'Reels rápido/dica', channels: ['Instagram', 'TikTok'] },
+      { day: 'Domingo', editoria: 'Autoridade Seazone', format: 'Bastidor/institucional', channels: ['Instagram'] },
+    ];
+
+    // Mock: editorial compliance this month
+    const EDITORIAL_COMPLIANCE = {
+      total: { published: 18, planned: 22 },
+      byDay: [
+        { day: 'Seg', status: 'published', count: 4, planned: 4 },
+        { day: 'Ter', status: 'published', count: 3, planned: 4 },
+        { day: 'Qua', status: 'published', count: 3, planned: 4 },
+        { day: 'Qui', status: 'late', count: 2, planned: 3 },
+        { day: 'Sex', status: 'published', count: 3, planned: 3 },
+        { day: 'Sáb', status: 'published', count: 2, planned: 3 },
+        { day: 'Dom', status: 'planned', count: 1, planned: 1 },
+      ],
+    };
+
+    const EDITORIAS = [
+      'Inteligência de Mercado', 'Dono no Controle', 'Onde Investir',
+      'Resultados Reais', 'Destinos Seazone', 'Autoridade Seazone', 'Por dentro do Airbnb',
+    ];
+
+    // Mock editorial mix
+    const EDITORIAL_MIX = EDITORIAS.map(e => ({
+      editoria: e,
+      real: Math.floor(Math.random() * 5) + 1,
+      planned: Math.floor(Math.random() * 3) + 3,
+    }));
+
+    // TODO: Meta Ads API + Google Ads API
+    const MIDIA_PAGA_DATA = {
+      vendasMidiaPaga: { real: null, meta: null, unit: 'vendas' },
+      cacMidiaPaga: { real: null, meta: null, unit: 'R$' },
+      investimentoTotal: { real: null, meta: null, unit: 'R$' },
+    };
+
+    // Ativação data
+    const ATIVACAO_ORCAMENTO = {
+      total: 688500,
+      mensal: 114750,
+      frentes: [
+        { name: 'SP · BH · RJ (cidades foco)', mensal: 82500, executado: 78200 },
+        { name: 'Salvador — manutenção', mensal: 11000, executado: 9800 },
+        { name: 'Novas cidades (A+B)', mensal: 5500, executado: 4200 },
+        { name: 'Eventos (3 ativações)', mensal: 5500, executado: 5500 },
+        { name: 'Urubici Spot', mensal: 2500, executado: 1800 },
+        { name: 'Patrocínio / parceria', mensal: 2250, executado: 2250 },
+        { name: 'Ações de experiência', mensal: 2200, executado: 1600 },
+        { name: 'Publicidade in-property', mensal: 3300, executado: 2900 },
+      ],
+    };
+
+    const ATIVACAO_METRICAS = {
+      acoesRealizadas: { real: 12, meta: 15, unit: 'ações' },
+      orcamentoExecutado: { real: 106250, meta: 114750, unit: 'R$' },
+      leadsBTL: { real: 47, meta: 60, unit: 'leads' },
+      ugcTTL: { real: 23, meta: 30, unit: 'menções' },
+      alcanceATL: { real: 185000, meta: 200000, unit: 'pessoas' },
+    };
+
+    const NIVEIS_ATIVACAO = [
+      { sigla: 'ATL', nome: 'Marca Memorável', desc: 'OOH, patrocínio', indicadores: 'Acessos diretos, seguidores, menções' },
+      { sigla: 'TTL', nome: 'Consideração', desc: 'Experiências, ativações presenciais', indicadores: 'UGC, engajamento, tempo de exposição' },
+      { sigla: 'BTL', nome: 'Conversão', desc: 'Eventos qualificados, captação direta', indicadores: 'Leads, taxa de conversão, CPC' },
+    ];
+
+    // TODO: Email platform API + WhatsApp API + Manychat API + Pipedrive
+    const MIDIA_NAO_PAGA_DATA = {
+      vendasOrganicas: { real: null, meta: null, unit: 'vendas' },
+      cacOrganico: { real: null, meta: null, unit: 'R$' },
+      taxaAbertura: { real: null, meta: null, unit: '%' },
+      ctr: { real: null, meta: null, unit: '%' },
+      taxaConversao: { real: null, meta: null, unit: '%' },
+      baseAtivaEmail: { real: null, meta: null, unit: 'contatos' },
+      baseAtivaWhatsApp: { real: null, meta: null, unit: 'contatos' },
+      taxaOptOut: { real: null, meta: null, unit: '%' },
+      fluxosManychat: { real: null, meta: null, unit: 'fluxos' },
+      processosDocumentados: { real: null, meta: null, unit: '%' },
+    };
+
+    const BACKOFFICE_STATUS = [
+      { name: 'Linktree', status: 'ok' },
+      { name: 'Automações ativas', status: 'ok' },
+      { name: 'Integrações entre ferramentas', status: 'falha' },
+      { name: 'Processos documentados no Pipefy', status: 'ok' },
+    ];
+
+    // ============================================================
+    // UTILITY FUNCTIONS
+    // ============================================================
+
+    function formatNumber(n, unit) {
+      if (n === null || n === undefined) return '—';
+      if (unit === 'R$') return `R$ ${n.toLocaleString('pt-BR')}`;
+      if (unit === '%') return `${n}%`;
+      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+      if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+      return n.toLocaleString('pt-BR');
+    }
+
+    function calcPercent(real, meta) {
+      if (real === null || meta === null || meta === 0) return null;
+      return Math.round((real / meta) * 100);
+    }
+
+    function progressColor(pct) {
+      if (pct === null) return 'bg-gray-300';
+      if (pct >= 90) return 'bg-emerald-500';
+      if (pct >= 70) return 'bg-amber-400';
+      return 'bg-red-500';
+    }
+
+    function progressTextColor(pct) {
+      if (pct === null) return 'text-gray-400';
+      if (pct >= 90) return 'text-emerald-600';
+      if (pct >= 70) return 'text-amber-600';
+      return 'text-red-600';
+    }
+
+    // ============================================================
+    // REUSABLE COMPONENTS
+    // ============================================================
+
+    function ProgressBar({ real, meta, unit, height = 'h-2.5' }) {
+      const pct = calcPercent(real, meta);
+      const width = pct !== null ? Math.min(pct, 100) : 0;
+      const color = progressColor(pct);
+
+      return (
+        <div className={`w-full bg-gray-200 rounded-full ${height} overflow-hidden`}>
+          <div
+            className={`${color} ${height} rounded-full transition-all duration-500`}
+            style={{ width: `${pct !== null ? width : 100}%`, opacity: pct === null ? 0.3 : 1 }}
+          />
+        </div>
+      );
+    }
+
+    function KPICard({ label, real, meta, unit, fonte, compact = false, onClick }) {
+      const pct = calcPercent(real, meta);
+      const textColor = progressTextColor(pct);
+
+      return (
+        <div
+          className={`bg-white rounded-xl border border-gray-200 ${compact ? 'p-4' : 'p-5'} hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer hover:border-sea-400' : ''}`}
+          onClick={onClick}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-500 uppercase tracking-wide`}>{label}</span>
+            {fonte && <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{fonte}</span>}
+          </div>
+          <div className="flex items-end gap-3 mb-3">
+            <span className={`${compact ? 'text-xl' : 'text-2xl'} font-bold text-gray-900`}>
+              {formatNumber(real, unit)}
+            </span>
+            <span className="text-sm text-gray-400 mb-0.5">
+              / {formatNumber(meta, unit)}
+            </span>
+            <span className={`text-sm font-semibold ml-auto ${textColor}`}>
+              {pct !== null ? `${pct}%` : '—'}
+            </span>
+          </div>
+          <ProgressBar real={real} meta={meta} unit={unit} />
+        </div>
+      );
+    }
+
+    function FollowerCard({ data, monthKey }) {
+      const goal = data.goals[monthKey];
+      const pct = calcPercent(data.current, goal);
+      const color = progressColor(pct);
+      const textColor = progressTextColor(pct);
+      const platformIcon = data.platform === 'Instagram' ? '📷' : '🎵';
+
+      return (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">{platformIcon}</span>
+            <span className="text-sm font-semibold text-gray-700">{data.label}</span>
+            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{data.platform}</span>
+          </div>
+          <div className="flex items-end gap-2 mb-2">
+            <span className="text-xl font-bold">{formatNumber(data.current)}</span>
+            <span className="text-xs text-gray-400 mb-0.5">/ {formatNumber(goal)}</span>
+            <span className={`text-xs font-semibold ml-auto ${textColor}`}>
+              {pct !== null ? `${pct}%` : '—'}
+            </span>
+          </div>
+          <ProgressBar real={data.current} meta={goal} />
+        </div>
+      );
+    }
+
+    function SectionTitle({ children, subtitle }) {
+      return (
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-900">{children}</h2>
+          {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+        </div>
+      );
+    }
+
+    function StatusBadge({ status }) {
+      const config = {
+        ok: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'OK' },
+        falha: { bg: 'bg-red-100', text: 'text-red-700', label: 'Falha' },
+        published: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Publicado' },
+        late: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Atrasado' },
+        planned: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Planejado' },
+      };
+      const c = config[status] || config.ok;
+      return <span className={`${c.bg} ${c.text} text-xs font-medium px-2 py-0.5 rounded-full`}>{c.label}</span>;
+    }
+
+    function TabButton({ label, active, onClick }) {
+      return (
+        <button
+          onClick={onClick}
+          className={`px-4 py-3 text-sm whitespace-nowrap transition-colors ${active ? 'tab-active text-sea-600' : 'text-gray-500 hover:text-gray-700 border-b-2 border-transparent'}`}
+        >
+          {label}
+        </button>
+      );
+    }
+
+    // ============================================================
+    // TAB: VISÃO GERAL
+    // ============================================================
+
+    function VisaoGeral({ setTab }) {
+      const areas = [
+        { name: 'Criação', kpi: '% entregas no prazo', real: null, meta: null, unit: '%', tab: 'criacao', fonte: 'Pipefy' },
+        { name: 'Mídias Sociais', kpi: 'Seguidores @destinoseazone IG', real: 108500, meta: 110000, unit: '', tab: 'midias-sociais', fonte: 'Instagram API' },
+        { name: 'Mídia Paga', kpi: 'Vendas via mídia paga', real: null, meta: null, unit: 'vendas', tab: 'midia-paga', fonte: 'Meta/Google Ads' },
+        { name: 'Ativação', kpi: 'Ações realizadas no mês', real: 12, meta: 15, unit: 'ações', tab: 'ativacao', fonte: 'Planilha' },
+        { name: 'Mídia Não Paga', kpi: 'Vendas orgânicas', real: null, meta: null, unit: 'vendas', tab: 'midia-nao-paga', fonte: 'Multi-canal' },
+      ];
+
+      return (
+        <div className="space-y-8">
+          {/* Area summary cards */}
+          <div>
+            <SectionTitle subtitle="Clique em um card para ver os detalhes da área">Resumo por Área</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {areas.map(a => (
+                <div key={a.tab} onClick={() => setTab(a.tab)} className="cursor-pointer">
+                  <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-sea-400 transition-all">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-bold text-sea-700">{a.name}</span>
+                      <span className="text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{a.fonte}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">{a.kpi}</p>
+                    <div className="flex items-end gap-2 mb-2">
+                      <span className="text-2xl font-bold text-gray-900">{formatNumber(a.real, a.unit)}</span>
+                      <span className="text-sm text-gray-400 mb-0.5">/ {formatNumber(a.meta, a.unit)}</span>
+                      <span className={`text-sm font-semibold ml-auto ${progressTextColor(calcPercent(a.real, a.meta))}`}>
+                        {calcPercent(a.real, a.meta) !== null ? `${calcPercent(a.real, a.meta)}%` : '—'}
+                      </span>
+                    </div>
+                    <ProgressBar real={a.real} meta={a.meta} unit={a.unit} />
+                    <div className="mt-3 text-xs text-sea-600 font-medium flex items-center gap-1">
+                      Ver detalhes →
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Followers section */}
+          <div>
+            <SectionTitle subtitle={`Meta do mês: ${CURRENT_MONTH}/2025`}>Seguidores por Conta</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Object.values(FOLLOWERS_DATA).map((d, i) => (
+                <FollowerCard key={i} data={d} monthKey={CURRENT_MONTH} />
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Stats */}
+          <div>
+            <SectionTitle subtitle="Abril/2025">Indicadores Rápidos</SectionTitle>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl border p-4 text-center">
+                <p className="text-xs text-gray-500 uppercase mb-1">Calendário Editorial</p>
+                <p className="text-2xl font-bold text-gray-900">{Math.round((EDITORIAL_COMPLIANCE.total.published / EDITORIAL_COMPLIANCE.total.planned) * 100)}%</p>
+                <p className="text-xs text-gray-400">{EDITORIAL_COMPLIANCE.total.published}/{EDITORIAL_COMPLIANCE.total.planned} posts</p>
+              </div>
+              <div className="bg-white rounded-xl border p-4 text-center">
+                <p className="text-xs text-gray-500 uppercase mb-1">Orçamento Ativação</p>
+                <p className="text-2xl font-bold text-gray-900">{Math.round((ATIVACAO_METRICAS.orcamentoExecutado.real / ATIVACAO_METRICAS.orcamentoExecutado.meta) * 100)}%</p>
+                <p className="text-xs text-gray-400">R$ {(ATIVACAO_METRICAS.orcamentoExecutado.real / 1000).toFixed(0)}k / R$ {(ATIVACAO_METRICAS.orcamentoExecutado.meta / 1000).toFixed(0)}k</p>
+              </div>
+              <div className="bg-white rounded-xl border p-4 text-center">
+                <p className="text-xs text-gray-500 uppercase mb-1">Leads BTL</p>
+                <p className="text-2xl font-bold text-gray-900">{ATIVACAO_METRICAS.leadsBTL.real}</p>
+                <p className="text-xs text-gray-400">meta: {ATIVACAO_METRICAS.leadsBTL.meta}</p>
+              </div>
+              <div className="bg-white rounded-xl border p-4 text-center">
+                <p className="text-xs text-gray-500 uppercase mb-1">Backoffice</p>
+                <p className="text-2xl font-bold text-emerald-600">{BACKOFFICE_STATUS.filter(b => b.status === 'ok').length}/{BACKOFFICE_STATUS.length}</p>
+                <p className="text-xs text-gray-400">sistemas OK</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // TAB: CRIAÇÃO
+    // ============================================================
+
+    function Criacao() {
+      const types = ['Estático', 'Vídeo/Motion', 'Blog/Landing', 'Branding'];
+      const typeKeys = ['estatico', 'videoMotion', 'blogLanding', 'branding'];
+
+      return (
+        <div className="space-y-8">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            <strong>Fonte de dados:</strong> Pipefy GraphQL API — aguardando integração.
+            Todas as metas estão como "a definir" até análise do Pipefy ser concluída.
+            {/* TODO: Pipefy GraphQL API — buscar cards do pipe X, phases, due dates */}
+          </div>
+
+          <div>
+            <SectionTitle subtitle="% de entregas realizadas dentro do prazo acordado">Entregas no Prazo</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {types.map((t, i) => (
+                <KPICard
+                  key={t}
+                  label={t}
+                  real={CRIACAO_DATA.entregasNoPrazo.byType[typeKeys[i]].real}
+                  meta={CRIACAO_DATA.entregasNoPrazo.byType[typeKeys[i]].meta}
+                  unit="%"
+                  fonte="Pipefy"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPICard label="Taxa de Retrabalho" real={CRIACAO_DATA.taxaRetrabalho.real} meta={CRIACAO_DATA.taxaRetrabalho.meta} unit="%" fonte="Pipefy" />
+            <KPICard label="Throughput Semanal" real={CRIACAO_DATA.throughputSemanal.real} meta={CRIACAO_DATA.throughputSemanal.meta} unit="entregas" fonte="Pipefy" />
+            <KPICard label="Backlog em Aberto" real={CRIACAO_DATA.backlogAberto.real} meta={CRIACAO_DATA.backlogAberto.meta} unit="cards" fonte="Pipefy" />
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <span className="text-sm font-medium text-gray-500 uppercase tracking-wide">Entregas no Prazo (Geral)</span>
+              <div className="mt-2 text-2xl font-bold text-gray-400">—</div>
+              <p className="text-xs text-gray-400 mt-1">Meta a definir</p>
+            </div>
+          </div>
+
+          <div>
+            <SectionTitle subtitle="Tempo médio de produção vs prazo acordado, por tipo de entrega">Ciclo Médio por Tipo</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 font-medium text-gray-500">Tipo</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Real (dias)</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Prazo Acordado</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {types.map((t, i) => {
+                    const d = CRIACAO_DATA.cicloMedio.byType[typeKeys[i]];
+                    return (
+                      <tr key={t} className="border-t border-gray-100">
+                        <td className="px-4 py-3 font-medium">{t}</td>
+                        <td className="px-4 py-3 text-gray-500">{d.real !== null ? `${d.real} dias` : '—'}</td>
+                        <td className="px-4 py-3 text-gray-500">{d.meta !== null ? `${d.meta} dias` : 'A definir'}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Aguardando dados</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // TAB: MÍDIAS SOCIAIS
+    // ============================================================
+
+    function MidiasSociais() {
+      const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+      const months = ['abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+      return (
+        <div className="space-y-8">
+          {/* Month selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-gray-500 mr-2">Mês:</span>
+            {months.map(m => (
+              <button
+                key={m}
+                onClick={() => setSelectedMonth(m)}
+                className={`px-3 py-1 text-sm rounded-full transition-colors ${m === selectedMonth ? 'bg-sea-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {m.charAt(0).toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Followers */}
+          <div>
+            <SectionTitle subtitle={`Metas de seguidores — ${selectedMonth}/2025`}>Seguidores por Conta</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {Object.values(FOLLOWERS_DATA).map((d, i) => (
+                <FollowerCard key={i} data={d} monthKey={selectedMonth} />
+              ))}
+            </div>
+          </div>
+
+          {/* Monthly goals table */}
+          <div>
+            <SectionTitle>Roadmap de Seguidores (Abr → Dez/2025)</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 font-medium text-gray-500 sticky left-0 bg-gray-50">Conta</th>
+                    {months.map(m => (
+                      <th key={m} className={`px-4 py-3 font-medium text-center ${m === selectedMonth ? 'text-sea-600 bg-sea-50' : 'text-gray-500'}`}>
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.values(FOLLOWERS_DATA).map((d, i) => (
+                    <tr key={i} className="border-t border-gray-100">
+                      <td className="px-4 py-3 font-medium sticky left-0 bg-white">
+                        {d.label} <span className="text-xs text-gray-400">{d.platform}</span>
+                      </td>
+                      {months.map(m => (
+                        <td key={m} className={`px-4 py-3 text-center ${m === selectedMonth ? 'bg-sea-50 font-semibold' : ''}`}>
+                          {formatNumber(d.goals[m])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Editorial Calendar Compliance */}
+          <div>
+            <SectionTitle subtitle="Posts publicados na data planejada ÷ total planejado">Calendário Editorial — Aderência</SectionTitle>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white rounded-xl border p-5">
+                <p className="text-sm text-gray-500 mb-2">Aderência geral</p>
+                <p className="text-3xl font-bold text-gray-900 mb-1">
+                  {Math.round((EDITORIAL_COMPLIANCE.total.published / EDITORIAL_COMPLIANCE.total.planned) * 100)}%
+                </p>
+                <p className="text-xs text-gray-400 mb-3">{EDITORIAL_COMPLIANCE.total.published} de {EDITORIAL_COMPLIANCE.total.planned} posts</p>
+                <ProgressBar real={EDITORIAL_COMPLIANCE.total.published} meta={EDITORIAL_COMPLIANCE.total.planned} />
+              </div>
+              <div className="lg:col-span-2 bg-white rounded-xl border p-5">
+                <p className="text-sm text-gray-500 mb-3">Status por dia da semana</p>
+                <div className="grid grid-cols-7 gap-2">
+                  {EDITORIAL_COMPLIANCE.byDay.map(d => (
+                    <div key={d.day} className="text-center">
+                      <p className="text-xs font-medium text-gray-600 mb-2">{d.day}</p>
+                      <div className="bg-gray-50 rounded-lg p-2">
+                        <p className="text-lg font-bold">{d.count}/{d.planned}</p>
+                        <StatusBadge status={d.count >= d.planned ? 'published' : d.count > 0 ? 'late' : 'planned'} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Weekly editorial calendar */}
+          <div>
+            <SectionTitle subtitle="Planejamento semanal fixo de conteúdo">Calendário Semanal</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 font-medium text-gray-500">Dia</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Editoria</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Formato</th>
+                    <th className="px-4 py-3 font-medium text-gray-500">Canais</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {EDITORIAL_CALENDAR.map((row, i) => (
+                    <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-4 py-3 font-semibold text-sea-700">{row.day}</td>
+                      <td className="px-4 py-3">{row.editoria}</td>
+                      <td className="px-4 py-3 text-gray-500">{row.format}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          {row.channels.map(c => (
+                            <span key={c} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{c}</span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Editorial Mix */}
+          <div>
+            <SectionTitle subtitle="Distribuição real vs planejada de publicações por editoria no mês">Mix de Editorias</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="space-y-3">
+                {EDITORIAL_MIX.map(e => (
+                  <div key={e.editoria} className="flex items-center gap-4">
+                    <span className="text-sm w-48 flex-shrink-0 text-gray-700">{e.editoria}</span>
+                    <div className="flex-1">
+                      <div className="flex gap-2 items-center">
+                        <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden flex">
+                          <div
+                            className="bg-sea-500 h-full rounded-l-full flex items-center justify-end pr-1"
+                            style={{ width: `${(e.real / Math.max(e.real, e.planned)) * 100}%` }}
+                          >
+                            <span className="text-[10px] text-white font-medium">{e.real}</span>
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-400 w-16">Meta: {e.planned}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-4 mt-4 pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-3 h-3 bg-sea-500 rounded"></div> Real
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-3 h-3 bg-gray-200 rounded"></div> Planejado
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // TAB: MÍDIA PAGA
+    // ============================================================
+
+    function MidiaPaga() {
+      return (
+        <div className="space-y-8">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            <strong>Fonte de dados:</strong> Meta Ads API + Google Ads API — aguardando integração com artefato externo de mídia paga e repositório de vendas.
+            {/* TODO: Meta Ads API — campaign insights */}
+            {/* TODO: Google Ads API — campaign metrics */}
+          </div>
+
+          <div>
+            <SectionTitle subtitle="Plataformas: Meta Ads + Google Ads · Objetivo: Leads de proprietários/investidores + awareness">Métricas Principais</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <KPICard label="Vendas via Mídia Paga" real={MIDIA_PAGA_DATA.vendasMidiaPaga.real} meta={MIDIA_PAGA_DATA.vendasMidiaPaga.meta} unit="vendas" fonte="Meta + Google Ads" />
+              <KPICard label="CAC via Mídia Paga" real={MIDIA_PAGA_DATA.cacMidiaPaga.real} meta={MIDIA_PAGA_DATA.cacMidiaPaga.meta} unit="R$" fonte="Vendas + Ads" />
+              <KPICard label="Investimento Total (mês)" real={MIDIA_PAGA_DATA.investimentoTotal.real} meta={MIDIA_PAGA_DATA.investimentoTotal.meta} unit="R$" fonte="Meta + Google Ads" />
+            </div>
+          </div>
+
+          <div>
+            <SectionTitle>Métricas Detalhadas (Em breve)</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                {['ROAS', 'CTR', 'CPC', 'CPL'].map(m => (
+                  <div key={m} className="text-center">
+                    <p className="text-xs text-gray-500 uppercase mb-2">{m}</p>
+                    <p className="text-2xl font-bold text-gray-300">—</p>
+                    <p className="text-xs text-gray-400 mt-1">A conectar</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 text-center mt-4 pt-4 border-t border-gray-100">
+                Métricas detalhadas virão de artefato externo a conectar futuramente
+              </p>
+            </div>
+          </div>
+
+          {/* Platform breakdown placeholder */}
+          <div>
+            <SectionTitle>Breakdown por Plataforma</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {['Meta Ads', 'Google Ads'].map(p => (
+                <div key={p} className="bg-white rounded-xl border border-gray-200 p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className={`text-lg ${p === 'Meta Ads' ? '🔵' : '🟡'}`}>{p === 'Meta Ads' ? '📘' : '📊'}</span>
+                    <span className="font-semibold text-gray-800">{p}</span>
+                  </div>
+                  <div className="space-y-3">
+                    {['Investimento', 'Leads', 'CPA'].map(metric => (
+                      <div key={metric} className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500">{metric}</span>
+                        <span className="text-sm font-medium text-gray-300">—</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-3">Aguardando integração</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // TAB: ATIVAÇÃO
+    // ============================================================
+
+    function Ativacao() {
+      const totalExecutado = ATIVACAO_ORCAMENTO.frentes.reduce((s, f) => s + f.executado, 0);
+
+      return (
+        <div className="space-y-8">
+          <div className="bg-sea-50 border border-sea-200 rounded-lg p-4 text-sm text-sea-800">
+            <strong>Período:</strong> Abril a Setembro/2026 · <strong>Orçamento total:</strong> R$ {ATIVACAO_ORCAMENTO.total.toLocaleString('pt-BR')} (6 meses) → R$ {ATIVACAO_ORCAMENTO.mensal.toLocaleString('pt-BR')}/mês
+            {/* TODO: Planilha de orçamento + ficha manual de evento + GA4 */}
+          </div>
+
+          {/* Main KPIs */}
+          <div>
+            <SectionTitle>Métricas do Mês</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KPICard label="Ações Realizadas" real={ATIVACAO_METRICAS.acoesRealizadas.real} meta={ATIVACAO_METRICAS.acoesRealizadas.meta} unit="ações" fonte="Manual" />
+              <KPICard label="Orçamento Executado" real={ATIVACAO_METRICAS.orcamentoExecutado.real} meta={ATIVACAO_METRICAS.orcamentoExecutado.meta} unit="R$" fonte="Planilha" />
+              <KPICard label="Leads BTL" real={ATIVACAO_METRICAS.leadsBTL.real} meta={ATIVACAO_METRICAS.leadsBTL.meta} unit="leads" fonte="Eventos" />
+              <KPICard label="UGC Gerado (TTL)" real={ATIVACAO_METRICAS.ugcTTL.real} meta={ATIVACAO_METRICAS.ugcTTL.meta} unit="menções" fonte="Social" />
+              <KPICard label="Alcance ATL" real={ATIVACAO_METRICAS.alcanceATL.real} meta={ATIVACAO_METRICAS.alcanceATL.meta} unit="pessoas" fonte="Estimativa" />
+            </div>
+          </div>
+
+          {/* Budget by front */}
+          <div>
+            <SectionTitle subtitle="Orçamento mensal por frente vs executado">Orçamento por Frente</SectionTitle>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 font-medium text-gray-500">Frente</th>
+                    <th className="px-4 py-3 font-medium text-gray-500 text-right">Planejado/mês</th>
+                    <th className="px-4 py-3 font-medium text-gray-500 text-right">Executado</th>
+                    <th className="px-4 py-3 font-medium text-gray-500 text-right">%</th>
+                    <th className="px-4 py-3 font-medium text-gray-500 w-40">Progresso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ATIVACAO_ORCAMENTO.frentes.map(f => {
+                    const pct = calcPercent(f.executado, f.mensal);
+                    return (
+                      <tr key={f.name} className="border-t border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium">{f.name}</td>
+                        <td className="px-4 py-3 text-right text-gray-500">R$ {f.mensal.toLocaleString('pt-BR')}</td>
+                        <td className="px-4 py-3 text-right font-medium">R$ {f.executado.toLocaleString('pt-BR')}</td>
+                        <td className={`px-4 py-3 text-right font-semibold ${progressTextColor(pct)}`}>{pct}%</td>
+                        <td className="px-4 py-3">
+                          <ProgressBar real={f.executado} meta={f.mensal} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                    <td className="px-4 py-3">TOTAL</td>
+                    <td className="px-4 py-3 text-right">R$ {ATIVACAO_ORCAMENTO.mensal.toLocaleString('pt-BR')}</td>
+                    <td className="px-4 py-3 text-right">R$ {totalExecutado.toLocaleString('pt-BR')}</td>
+                    <td className={`px-4 py-3 text-right ${progressTextColor(calcPercent(totalExecutado, ATIVACAO_ORCAMENTO.mensal))}`}>
+                      {calcPercent(totalExecutado, ATIVACAO_ORCAMENTO.mensal)}%
+                    </td>
+                    <td className="px-4 py-3">
+                      <ProgressBar real={totalExecutado} meta={ATIVACAO_ORCAMENTO.mensal} />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Activation levels */}
+          <div>
+            <SectionTitle subtitle="Funil de ativação: marca → consideração → conversão">Níveis de Ativação</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {NIVEIS_ATIVACAO.map(n => {
+                const colors = {
+                  ATL: { bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700', title: 'text-blue-800' },
+                  TTL: { bg: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', title: 'text-purple-800' },
+                  BTL: { bg: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-700', title: 'text-orange-800' },
+                };
+                const c = colors[n.sigla];
+                return (
+                  <div key={n.sigla} className={`${c.bg} ${c.border} border rounded-xl p-5`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`${c.badge} text-xs font-bold px-2 py-0.5 rounded`}>{n.sigla}</span>
+                      <span className={`font-semibold ${c.title}`}>{n.nome}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">{n.desc}</p>
+                    <div className="border-t border-gray-200 pt-3 mt-2">
+                      <p className="text-xs text-gray-500 uppercase mb-1">Indicadores-chave</p>
+                      <p className="text-sm text-gray-700">{n.indicadores}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // TAB: MÍDIA NÃO PAGA
+    // ============================================================
+
+    function MidiaNaoPaga() {
+      const metrics = [
+        { key: 'vendasOrganicas', label: 'Vendas Orgânicas' },
+        { key: 'cacOrganico', label: 'CAC Orgânico' },
+        { key: 'taxaAbertura', label: 'Taxa de Abertura' },
+        { key: 'ctr', label: 'CTR' },
+        { key: 'taxaConversao', label: 'Taxa de Conversão' },
+        { key: 'baseAtivaEmail', label: 'Base Ativa Email' },
+        { key: 'baseAtivaWhatsApp', label: 'Base Ativa WhatsApp' },
+        { key: 'taxaOptOut', label: 'Taxa de Opt-out' },
+        { key: 'fluxosManychat', label: 'Fluxos Ativos Manychat' },
+        { key: 'processosDocumentados', label: '% Processos Documentados' },
+      ];
+
+      return (
+        <div className="space-y-8">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            <strong>Canais:</strong> Email marketing + WhatsApp + Manychat ·
+            <strong> Ferramentas:</strong> Plataforma de email (a confirmar) + WhatsApp API + Manychat + Pipefy + Linktree<br/>
+            Todas as metas são "a definir" após 1º mês de operação.
+            {/* TODO: Email platform API — open rate, CTR, base size */}
+            {/* TODO: WhatsApp API — delivery stats, opt-out rate */}
+            {/* TODO: Manychat API — active flows count */}
+            {/* TODO: Pipedrive API — organic sales, conversion rate */}
+          </div>
+
+          {/* Main metrics */}
+          <div>
+            <SectionTitle subtitle="Métricas aguardando integração — metas serão definidas após 1º mês">Métricas Principais</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {metrics.map(m => {
+                const d = MIDIA_NAO_PAGA_DATA[m.key];
+                return (
+                  <KPICard
+                    key={m.key}
+                    label={m.label}
+                    real={d.real}
+                    meta={d.meta}
+                    unit={d.unit}
+                    fonte={m.key.includes('email') || m.key === 'taxaAbertura' || m.key === 'ctr' ? 'Email' :
+                           m.key.includes('WhatsApp') ? 'WhatsApp' :
+                           m.key.includes('Manychat') || m.key === 'fluxosManychat' ? 'Manychat' : 'Multi-canal'}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Backoffice status */}
+          <div>
+            <SectionTitle subtitle="Status de sistemas e integrações">Backoffice</SectionTitle>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {BACKOFFICE_STATUS.map(b => (
+                <div key={b.name} className={`bg-white rounded-xl border p-4 flex items-center gap-3 ${b.status === 'falha' ? 'border-red-200' : 'border-gray-200'}`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${b.status === 'ok' ? 'bg-emerald-100' : 'bg-red-100'}`}>
+                    <span className="text-lg">{b.status === 'ok' ? '✓' : '✕'}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{b.name}</p>
+                    <StatusBadge status={b.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Channel strategy */}
+          <div>
+            <SectionTitle>Estratégia por Canal</SectionTitle>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { name: 'Email Marketing', icon: '✉️', desc: 'Nutrição de leads, newsletters, campanhas', status: 'Plataforma a confirmar' },
+                { name: 'WhatsApp', icon: '💬', desc: 'Comunicação direta, automações, follow-up', status: 'API em setup' },
+                { name: 'Manychat', icon: '🤖', desc: 'Automações de DM, captação via stories/reels', status: 'Configuração inicial' },
+              ].map(ch => (
+                <div key={ch.name} className="bg-white rounded-xl border border-gray-200 p-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl">{ch.icon}</span>
+                    <span className="font-semibold text-gray-800">{ch.name}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-3">{ch.desc}</p>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{ch.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================================
+    // MAIN APP
+    // ============================================================
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('visao-geral');
+
+      const tabs = [
+        { id: 'visao-geral', label: 'Visão Geral' },
+        { id: 'criacao', label: 'Criação' },
+        { id: 'midias-sociais', label: 'Mídias Sociais' },
+        { id: 'midia-paga', label: 'Mídia Paga' },
+        { id: 'ativacao', label: 'Ativação' },
+        { id: 'midia-nao-paga', label: 'Mídia Não Paga' },
+      ];
+
+      const renderTab = () => {
+        switch (activeTab) {
+          case 'visao-geral': return <VisaoGeral setTab={setActiveTab} />;
+          case 'criacao': return <Criacao />;
+          case 'midias-sociais': return <MidiasSociais />;
+          case 'midia-paga': return <MidiaPaga />;
+          case 'ativacao': return <Ativacao />;
+          case 'midia-nao-paga': return <MidiaNaoPaga />;
+          default: return <VisaoGeral setTab={setActiveTab} />;
+        }
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          {/* Header */}
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <div className="flex items-center justify-between h-16">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-sea-600 rounded-lg flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">S</span>
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900 leading-tight">Seazone Marketing</h1>
+                    <p className="text-[10px] text-gray-400 leading-tight">Dashboard Operacional</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-gray-400 hidden sm:block">
+                    Dados mock · Integrações pendentes
+                  </span>
+                  <div className="bg-amber-100 text-amber-700 text-xs font-medium px-3 py-1 rounded-full">
+                    Abr/2025
+                  </div>
+                </div>
+              </div>
+              {/* Tabs */}
+              <div className="flex overflow-x-auto scrollbar-thin -mb-px">
+                {tabs.map(t => (
+                  <TabButton
+                    key={t.id}
+                    label={t.label}
+                    active={activeTab === t.id}
+                    onClick={() => setActiveTab(t.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </header>
+
+          {/* Content */}
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+            {renderTab()}
+          </main>
+
+          {/* Footer */}
+          <footer className="border-t border-gray-200 bg-white mt-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between text-xs text-gray-400">
+              <span>Seazone Marketing Dashboard v1.0</span>
+              <span>Dados ilustrativos — integrações em desenvolvimento</span>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
